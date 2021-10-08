@@ -1,3 +1,5 @@
+#ifdef INTEL_INTRINSICS
+
 #include "avisynth.h"
 #include <stdint.h>
 #include <algorithm>
@@ -170,3 +172,4 @@ void weighted_average_f_avx2(uint8_t *dstp, int dst_pitch, const uint8_t **src_p
   _mm256_zeroupper();
 }
 
+#endif

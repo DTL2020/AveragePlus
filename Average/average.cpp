@@ -2,13 +2,22 @@
 #include "avs/alignment.h"
 #include <stdint.h>
 #include <algorithm>
-#include <emmintrin.h>
 #include <vector>
+
+#ifdef INTEL_INTRINSICS
 #include "average_avx.h"
 #include "average_avx2.h"
+#endif
 
+#ifdef INTEL_INTRINSICS
 #include "emmintrin.h"
+#endif
+
 #include <cstring>
+
+#if defined(_WIN32) && !defined(INTEL_INTRINSICS)
+#error Forgot to set INTEL_INTRINSICS? Comment out this line if not
+#endif
 
 template<int minimum, int maximum>
 static AVS_FORCEINLINE int static_clip(float val) {
@@ -47,6 +56,7 @@ static AVS_FORCEINLINE void weighted_average_c(uint8_t *dstp, int dst_pitch, con
   }
 }
 
+#ifdef INTEL_INTRINSICS
 // fake _mm_packus_epi32 (orig is SSE4.1 only)
 static AVS_FORCEINLINE __m128i _MM_PACKUS_EPI32(__m128i a, __m128i b)
 {
@@ -322,6 +332,8 @@ static inline void weighted_average_int_sse2(uint8_t *dstp, int dst_pitch, const
       }
     }
 }
+#endif
+// INTEL_INTRINSICS end
 
 struct WeightedClip {
     PClip clip;
@@ -345,11 +357,14 @@ public:
     int pixelsize = vi.ComponentSize();
     int bits_per_pixel = vi.BitsPerComponent();
 
+#ifdef INTEL_INTRINSICS
     const bool avx = !!(env->GetCPUFlags() & CPUF_AVX);
     const bool avx2 = !!(env->GetCPUFlags() & CPUF_AVX2);
+#endif
     // we don't know the alignment here. avisynth+: 32 bytes, classic: 16
     // decide later (processor_, processor_32aligned)
 
+#ifdef INTEL_INTRINSICS
     if (env->GetCPUFlags() & CPUF_SSE2) {
       bool use_weighted_average_f = false;
       if (pixelsize == 1) {
@@ -405,7 +420,9 @@ public:
         }
       }
     }
-    else {
+    else
+#endif
+    {
       switch (bits_per_pixel) {
       case 8:
         processor_ = &weighted_average_c<uint8_t, 8>;
