@@ -39,9 +39,21 @@
     <ClInclude Include="avs\win.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="average_avx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="average_avx2.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="average.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="average_avx.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="average_avx2.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 2013
-VisualStudioVersion = 12.0.21005.1
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.31727.386
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Average", "Average\Average.vcxproj", "{057699EE-4AAD-481A-97EA-881068AF6DB5}"
 EndProject
@@ -9,6 +9,8 @@ Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
 		Debug|x64 = Debug|x64
+		Rel LLVM|Win32 = Rel LLVM|Win32
+		Rel LLVM|x64 = Rel LLVM|x64
 		Release|Win32 = Release|Win32
 		Release|x64 = Release|x64
 	EndGlobalSection
@@ -17,6 +19,10 @@ Global
 		{057699EE-4AAD-481A-97EA-881068AF6DB5}.Debug|Win32.Build.0 = Debug|Win32
 		{057699EE-4AAD-481A-97EA-881068AF6DB5}.Debug|x64.ActiveCfg = Debug|x64
 		{057699EE-4AAD-481A-97EA-881068AF6DB5}.Debug|x64.Build.0 = Debug|x64
+		{057699EE-4AAD-481A-97EA-881068AF6DB5}.Rel LLVM|Win32.ActiveCfg = Rel LLVM|Win32
+		{057699EE-4AAD-481A-97EA-881068AF6DB5}.Rel LLVM|Win32.Build.0 = Rel LLVM|Win32
+		{057699EE-4AAD-481A-97EA-881068AF6DB5}.Rel LLVM|x64.ActiveCfg = Rel LLVM|x64
+		{057699EE-4AAD-481A-97EA-881068AF6DB5}.Rel LLVM|x64.Build.0 = Rel LLVM|x64
 		{057699EE-4AAD-481A-97EA-881068AF6DB5}.Release|Win32.ActiveCfg = Release|Win32
 		{057699EE-4AAD-481A-97EA-881068AF6DB5}.Release|Win32.Build.0 = Release|Win32
 		{057699EE-4AAD-481A-97EA-881068AF6DB5}.Release|x64.ActiveCfg = Release|x64
@@ -24,5 +30,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {175F9FC8-28B3-4088-BFC9-3BC55371EDAD}
 	EndGlobalSection
 EndGlobal
