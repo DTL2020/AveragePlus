@@ -494,21 +494,27 @@ PVideoFrame Average::GetFrame(int n, IScriptEnvironment *env) {
 
 
 AVSValue __cdecl create_average(AVSValue args, void* user_data, IScriptEnvironment* env) {
-    int arguments_count = args[0].ArraySize();
+    AVSValue args0 = args[0];
+    int arguments_count = args0.ArraySize();
+    if (arguments_count == 1 && args0[0].IsArray()) {
+      args0 = args0[0];
+      arguments_count = args0.ArraySize();
+    }
+
     if (arguments_count % 2 != 0) {
-        env->ThrowError("Average requires an even number of arguments.");
+        env->ThrowError("Average requires an even number of arguments (clip,weight,...) listed or passed in a single array.");
     }
     if (arguments_count == 0) {
         env->ThrowError("Average: At least one clip has to be supplied.");
     }
     std::vector<WeightedClip> clips;
-    auto first_clip = args[0][0].AsClip();
+    auto first_clip = args0[0].AsClip();
     auto first_vi = first_clip->GetVideoInfo();
-    clips.emplace_back(first_clip, static_cast<float>(args[0][1].AsFloat()));
+    clips.emplace_back(first_clip, static_cast<float>(args0[1].AsFloat()));
 
     for (int i = 2; i < arguments_count; i += 2) {
-        auto clip = args[0][i].AsClip();
-        float weight = static_cast<float>(args[0][i+1].AsFloat());
+        auto clip = args0[i].AsClip();
+        float weight = static_cast<float>(args0[i+1].AsFloat());
         if (std::abs(weight) < 0.00001f) {
             continue;
         }
