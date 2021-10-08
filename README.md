@@ -13,8 +13,61 @@ out[x] = clip1[x] * weight1 + clip2[x] * weight2 + clip3[x] * weight3...
 ```
 The filter performs faster when all weight in the call are less or equal to one. This filter should be faster than the old Average and more stable (alas slower) than RedAverage.
 
+### Build instructions
+VS2019: 
+  use IDE
+
+Windows GCC (mingw installed by msys2):
+  from the 'build' folder under project root:
+
+  del ..\CMakeCache.txt
+  cmake .. -G "MinGW Makefiles" -DENABLE_INTEL_SIMD:bool=on
+  @rem test: cmake .. -G "MinGW Makefiles" -DENABLE_INTEL_SIMD:bool=off
+  cmake --build . --config Release  
+
+Linux
+  from the 'build' folder under project root:
+  ENABLE_INTEL_SIMD is automatically off for non x86 arhitectures
+  
+* Clone repo and build
+    
+        git clone https://github.com/pinterf/Average
+        cd Average
+        cmake -B build -S .
+        cmake --build build
+
+  Useful hints:        
+   build after clean:
+
+        cmake --build build --clean-first
+
+   Force no asm support
+
+        cmake -B build -S . -DENABLE_INTEL_SIMD:bool=off
+
+   delete cmake cache
+
+        rm build/CMakeCache.txt
+
+* Find binaries at
+    
+        build/Average/libaverage.so
+
+* Install binaries
+
+        cd build
+        sudo make install
+
 ### History
 ```
+v0.95 (20211008)
+- add AVX2 routines
+- accept parameter as a nested array stuffed into the first parameter (AVS 3.7.1)
+- pass over frame properties if any (Avisynth interface v8+ check)
+- Source: update to VS2019, clang-cl option, gcc and linux friendly
+- add CMake build environment, linux build instructions
+- Make it compilable for non-Intel processors (C only)
+
 v0.94 (20170127)
 Fix: fix the fix: rounding of intermediate results was ok for two clips
 New: AVX for 10-16bit (+20-30%) and float (+50-60%) compared to v0.93
