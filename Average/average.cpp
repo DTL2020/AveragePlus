@@ -1,5 +1,5 @@
 #include "avisynth.h"
-#include "avs\alignment.h"
+#include "avs/alignment.h"
 #include <stdint.h>
 #include <algorithm>
 #include <emmintrin.h>
