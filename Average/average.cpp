@@ -1,6 +1,3 @@
-#define NOMINMAX
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
 #include "avisynth.h"
 #include "avs\alignment.h"
 #include <stdint.h>
@@ -8,9 +5,12 @@
 #include <emmintrin.h>
 #include <vector>
 #include "average_avx.h"
+#include "average_avx2.h"
+
+#include "emmintrin.h"
 
 template<int minimum, int maximum>
-static __forceinline int static_clip(float val) {
+static AVS_FORCEINLINE int static_clip(float val) {
     if (val > maximum) {
         return maximum;
     }
@@ -21,7 +21,7 @@ static __forceinline int static_clip(float val) {
 }
 
 template<typename pixel_t, int bits_per_pixel>
-static inline void weighted_average_c(uint8_t *dstp, int dst_pitch, const uint8_t **src_pointers, int *src_pitches, float *weights, int frames_count, int width, int height) {
+static AVS_FORCEINLINE void weighted_average_c(uint8_t *dstp, int dst_pitch, const uint8_t **src_pointers, int *src_pitches, float *weights, int frames_count, int width, int height) {
   // width is rowsize
   const int max_pixel_value = (sizeof(pixel_t) == 1) ? 255 : ((1 << bits_per_pixel) - 1);
 
@@ -47,7 +47,7 @@ static inline void weighted_average_c(uint8_t *dstp, int dst_pitch, const uint8_
 }
 
 // fake _mm_packus_epi32 (orig is SSE4.1 only)
-__forceinline __m128i _MM_PACKUS_EPI32(__m128i a, __m128i b)
+static AVS_FORCEINLINE __m128i _MM_PACKUS_EPI32(__m128i a, __m128i b)
 {
   a = _mm_slli_epi32(a, 16);
   a = _mm_srai_epi32(a, 16);
@@ -57,8 +57,7 @@ __forceinline __m128i _MM_PACKUS_EPI32(__m128i a, __m128i b)
   return a;
 }
 
-// hasSSE4: only counts where uint16_t and bits_per_pixel == 16
-template<typename pixel_t, int bits_per_pixel, bool hasSSE4>
+template<typename pixel_t, int bits_per_pixel>
 static inline void weighted_average_sse2(uint8_t *dstp, int dst_pitch, const uint8_t **src_pointers, int *src_pitches, float *weights, int frames_count, int width, int height) {
     // width is row_size
     int mod_width;
@@ -113,10 +112,7 @@ static inline void weighted_average_sse2(uint8_t *dstp, int dst_pitch, const uin
                 dst = _mm_packs_epi32(dst_lo, dst_hi); // no need for packus
               }
               else {
-                if(hasSSE4)
-                  dst = _mm_packus_epi32(dst_lo, dst_hi);
-                else
-                  dst = _MM_PACKUS_EPI32(dst_lo, dst_hi); // SSE2 friendly but slower
+                dst = _MM_PACKUS_EPI32(dst_lo, dst_hi); // SSE2 friendly but slower
               }
             }
             
@@ -151,8 +147,6 @@ static inline void weighted_average_f_sse2(uint8_t *dstp, int dst_pitch, const u
   int mod_width = width / 16 * 16;
 
   const int sse_size = 16;
-
-  __m128i zero = _mm_setzero_si128();
 
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < mod_width; x += sse_size) {
@@ -379,26 +373,23 @@ public:
       if (use_weighted_average_f) {
         switch(bits_per_pixel) {
         case 8: 
-          processor_ = &weighted_average_sse2<uint8_t, 8, false>;
-          processor_32aligned_ = avx ? &weighted_average_avx<uint8_t, 8> : &weighted_average_sse2<uint8_t, 8, false>;
+          processor_ = &weighted_average_sse2<uint8_t, 8>;
+          processor_32aligned_ = avx ? &weighted_average_avx<uint8_t, 8> : &weighted_average_sse2<uint8_t, 8>;
           break;
         case 10: 
-          processor_ = &weighted_average_sse2<uint16_t, 10, false>;
-          processor_32aligned_ = avx ? &weighted_average_avx<uint16_t, 10> : &weighted_average_sse2<uint16_t, 10, false>;
+          processor_ = &weighted_average_sse2<uint16_t, 10>;
+          processor_32aligned_ = avx ? &weighted_average_avx<uint16_t, 10> : &weighted_average_sse2<uint16_t, 10>;
           break;
         case 12:
-          processor_ = &weighted_average_sse2<uint16_t, 12, false>;
-          processor_32aligned_ = avx ? &weighted_average_avx<uint16_t, 12> : &weighted_average_sse2<uint16_t, 12, false>;
+          processor_ = &weighted_average_sse2<uint16_t, 12>;
+          processor_32aligned_ = avx ? &weighted_average_avx<uint16_t, 12> : &weighted_average_sse2<uint16_t, 12>;
           break;
         case 14:
-          processor_ = &weighted_average_sse2<uint16_t, 14, false>;
-          processor_32aligned_ = avx ? &weighted_average_avx<uint16_t, 14> : &weighted_average_sse2<uint16_t, 14, false>;
+          processor_ = &weighted_average_sse2<uint16_t, 14>;
+          processor_32aligned_ = avx ? &weighted_average_avx<uint16_t, 14> : &weighted_average_sse2<uint16_t, 14>;
           break;
         case 16:
-          if(env->GetCPUFlags() & CPUF_SSE4_1)
-            processor_ = &weighted_average_sse2<uint16_t, 16, true>;
-          else
-            processor_ = &weighted_average_sse2<uint16_t, 16, false>;
+          processor_ = &weighted_average_sse2<uint16_t, 16>;
           processor_32aligned_ = avx ? &weighted_average_avx<uint16_t, 16> : processor_;
           break;
         case 32:
@@ -433,7 +424,7 @@ public:
     }
   }
 
-  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment *env);
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) override;
 
   int __stdcall SetCacheHints(int cachehints, int frame_range) override {
     return cachehints == CACHE_GET_MTMODE ? MT_NICE_FILTER : 0;
