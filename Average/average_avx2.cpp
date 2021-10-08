@@ -79,10 +79,6 @@ void weighted_average_avx2(uint8_t *dstp, int dst_pitch, const uint8_t **src_poi
                   src = _mm256_load_si256(reinterpret_cast<const __m256i*>(src_pointers[i] + x));
                 }
 
-                // no need for src_lo/hi
-                if (sizeof(pixel_t) == 1)
-                  src = _mm256_unpacklo_epi8(src, zero);
-
                 // _mm256_unpacklo_epi16: AVX2
                 src_lo_ps = _mm256_cvtepi32_ps(_mm256_unpacklo_epi16(src, zero));
                 src_hi_ps = _mm256_cvtepi32_ps(_mm256_unpackhi_epi16(src, zero));
