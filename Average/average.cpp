@@ -340,7 +340,8 @@ public:
     int pixelsize = vi.ComponentSize();
     int bits_per_pixel = vi.BitsPerComponent();
 
-    bool avx = !!(env->GetCPUFlags() & CPUF_AVX);
+    const bool avx = !!(env->GetCPUFlags() & CPUF_AVX);
+    const bool avx2 = !!(env->GetCPUFlags() & CPUF_AVX2);
     // we don't know the alignment here. avisynth+: 32 bytes, classic: 16
     // decide later (processor_, processor_32aligned)
 
@@ -374,27 +375,27 @@ public:
         switch(bits_per_pixel) {
         case 8: 
           processor_ = &weighted_average_sse2<uint8_t, 8>;
-          processor_32aligned_ = avx ? &weighted_average_avx<uint8_t, 8> : &weighted_average_sse2<uint8_t, 8>;
+          processor_32aligned_ = avx2 ? &weighted_average_avx2<uint8_t, 8> : avx ? &weighted_average_avx<uint8_t, 8> : &weighted_average_sse2<uint8_t, 8>;
           break;
         case 10: 
           processor_ = &weighted_average_sse2<uint16_t, 10>;
-          processor_32aligned_ = avx ? &weighted_average_avx<uint16_t, 10> : &weighted_average_sse2<uint16_t, 10>;
+          processor_32aligned_ = avx2 ? &weighted_average_avx2<uint16_t, 10> : avx ? &weighted_average_avx<uint16_t, 10> : &weighted_average_sse2<uint16_t, 10>;
           break;
         case 12:
           processor_ = &weighted_average_sse2<uint16_t, 12>;
-          processor_32aligned_ = avx ? &weighted_average_avx<uint16_t, 12> : &weighted_average_sse2<uint16_t, 12>;
+          processor_32aligned_ = avx2 ? &weighted_average_avx2<uint16_t, 12> : avx ? &weighted_average_avx<uint16_t, 12> : &weighted_average_sse2<uint16_t, 12>;
           break;
         case 14:
           processor_ = &weighted_average_sse2<uint16_t, 14>;
-          processor_32aligned_ = avx ? &weighted_average_avx<uint16_t, 14> : &weighted_average_sse2<uint16_t, 14>;
+          processor_32aligned_ = avx2 ? &weighted_average_avx2<uint16_t, 14> : avx ? &weighted_average_avx<uint16_t, 14> : &weighted_average_sse2<uint16_t, 14>;
           break;
         case 16:
           processor_ = &weighted_average_sse2<uint16_t, 16>;
-          processor_32aligned_ = avx ? &weighted_average_avx<uint16_t, 16> : processor_;
+          processor_32aligned_ = avx2 ? &weighted_average_avx2<uint16_t, 16> : avx ? &weighted_average_avx<uint16_t, 16> : processor_;
           break;
         case 32:
           processor_ = &weighted_average_f_sse2;
-          processor_32aligned_ = avx ? &weighted_average_f_avx : &weighted_average_f_sse2;
+          processor_32aligned_ = avx2 ? &weighted_average_f_avx2 : avx ? &weighted_average_f_avx : &weighted_average_f_sse2;
           break;
         }
       }
