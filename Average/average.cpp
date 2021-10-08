@@ -8,6 +8,7 @@
 #include "average_avx2.h"
 
 #include "emmintrin.h"
+#include <cstring>
 
 template<int minimum, int maximum>
 static AVS_FORCEINLINE int static_clip(float val) {

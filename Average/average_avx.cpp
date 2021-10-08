@@ -11,20 +11,6 @@
 #include <immintrin.h> // MS version of immintrin.h covers AVX, AVX2 and FMA3
 #endif // __GNUC__
 
-#if !defined(__FMA__)
-// Assume that all processors that have AVX2 also have FMA3
-#if defined(__GNUC__) && !defined(__INTEL_COMPILER) && !defined(__clang__)
-// Prevent error message in g++ when using FMA intrinsics with avx2:
-#pragma message "It is recommended to specify also option -mfma when using -mavx2 or higher"
-#else
-#define __FMA__  1
-#endif
-#endif
-// FMA3 instruction set
-#if defined(__FMA__) && (defined(__GNUC__) || defined(__clang__))  && !defined(__INTEL_COMPILER)
-#include <fmaintrin.h>
-#endif // __FMA__
-
 template<int minimum, int maximum>
 static AVS_FORCEINLINE int static_clip(float val) {
     if (val > maximum) {
