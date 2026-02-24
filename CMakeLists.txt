@@ -9,7 +9,7 @@
 # "Visual Studio 16 2019" + LLVM 8.0 (clang) optional platform generator Win32 and x64
 CMAKE_MINIMUM_REQUIRED( VERSION 3.8.2 )
 
-project("Average" LANGUAGES CXX)
+project("AveragePlus" LANGUAGES CXX)
   include(GNUInstallDirs)
 
 # Avoid uselessly linking to unused libraries
@@ -210,7 +210,7 @@ ELSE()
   message("Intel SIMD disabled")
 ENDIF()
 
-add_subdirectory("Average")
+add_subdirectory("AveragePlus")
 
 # uninstall target
 configure_file(

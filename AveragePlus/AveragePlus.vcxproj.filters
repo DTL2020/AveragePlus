@@ -47,7 +47,7 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="average.cpp">
+    <ClCompile Include="AveragePlus.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="average_avx.cpp">
@@ -58,7 +58,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="average.rc">
+    <ResourceCompile Include="AveragePlus.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
   </ItemGroup>
