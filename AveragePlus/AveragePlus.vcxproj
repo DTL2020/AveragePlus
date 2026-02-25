@@ -241,6 +241,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="AveragePlus.h" />
     <ClInclude Include="average_avx.h" />
     <ClInclude Include="average_avx2.h" />
     <ClInclude Include="avisynth.h" />

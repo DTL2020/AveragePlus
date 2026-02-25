@@ -334,14 +334,53 @@ static inline void weighted_average_int_sse2(uint8_t *dstp, int dst_pitch, const
 
 class AveragePlus : public GenericVideoFilter {
 public:
-    AveragePlus(std::vector<WeightedClip> clips, IScriptEnvironment* env)
-      : GenericVideoFilter(clips[0].clip), clips_(clips) {
+    AveragePlus(std::vector<WeightedClip> clips,
+      int ythresh, int uthresh, int vthresh, float scthresh,
+      int y, int u, int v, int opt, int pmode, int ythupd, int uthupd, int vthupd,
+      int ypnew, int upnew, int vpnew, int threads, int idx_src,
+      IScriptEnvironment* env)
+      : GenericVideoFilter(clips[0].clip), clips_(clips),
+      _thresh{ ythresh, uthresh, vthresh },
+      _threshF{ 0.0f, 0.0f, 0.0f },
+      _shift(vi.BitsPerComponent() - 8),
+      _scthresh(scthresh),
+      _opt(opt),
+      _pmode(pmode),
+      _thUPD{ ythupd, uthupd, vthupd },
+      _pnew{ ypnew, upnew, vpnew },
+      _threads{ threads },
+      _idx_th_src(idx_src)
+    {
 
       has_at_least_v8 = true;
       try { env->CheckVersion(8); }
       catch (const AvisynthError&) { has_at_least_v8 = false; }
 
+      if (ythresh < 1 || ythresh > 256)
+        env->ThrowError("AveragePlus: ythresh must be between 1..256.");
+      if (uthresh < 1 || uthresh > 256)
+        env->ThrowError("AveragePlus: uthresh must be between 1..256.");
+      if (vthresh < 1 || vthresh > 256)
+        env->ThrowError("AveragePlus: vthresh must be between 1..256.");
+      if (_scthresh < 0.f || _scthresh > 100.f)
+        env->ThrowError("AveragePlus: scthresh must be between 0.0..100.0.");
+      if (_opt < -1 || _opt > 3)
+        env->ThrowError("AveragePlus: opt must be between -1..3.");
+      if (ythupd < 0)
+        env->ThrowError("AveragePlus: ythupd must be greater than 0.");
+      if (uthupd < 0)
+        env->ThrowError("AveragePlus: uthupd must be greater than 0.");
+      if (vthupd < 0)
+        env->ThrowError("AveragePlus: vthupd must be greater than 0.");
+      if (ypnew < 0)
+        env->ThrowError("AveragePlus: ypnew must be greater than 0.");
+      if (upnew < 0)
+        env->ThrowError("AveragePlus: upnew must be greater than 0.");
+      if (vpnew < 0)
+        env->ThrowError("AveragePlus: vpnew must be greater than 0.");
+
       int frames_count = (int)clips_.size();
+      _num_clips = frames_count; // save to global ?
 
       int pixelsize = vi.ComponentSize();
       int bits_per_pixel = vi.BitsPerComponent();
@@ -434,6 +473,40 @@ public:
         }
         processor_32aligned_ = processor_;
       }
+
+      const int planes[3]{ y, u, v };
+      static constexpr int iMaxSum{ std::numeric_limits<int>::max() };
+      static constexpr float fMaxSum{ std::numeric_limits<float>::max() };
+
+      for (int i{ 0 }; i < std::min(vi.NumComponents(), 3); ++i)
+      {
+        switch (planes[i])
+        {
+        case 3:
+          proccesplanes[i] = 3;
+          break;
+        case 2:
+          proccesplanes[i] = 2;
+          break;
+        case 1:
+          proccesplanes[i] = 1;
+          break;
+        default:
+          env->ThrowError("AveragePlus: y / u / v must be between 1..3.");
+        }
+
+        if (proccesplanes[i] == 3)
+        {
+
+          if (_pmode == 1 && _thUPD[i] > 0)
+          {
+            const size_t num_elements_minsum{ static_cast<size_t>(vi.width) * vi.height };
+            pIIRMem[i].resize(num_elements_minsum * vi.ComponentSize(), 0);
+            pMinSumMem[i].resize(num_elements_minsum, (vi.ComponentSize() < 4) ? iMaxSum : fMaxSum);
+          }
+        }
+      }
+
     }
     
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) override;
@@ -455,7 +528,8 @@ private:
   int _idx_th_src;
   int _thresh[3];
   float _threshF[3];
-//  std::array<std::vector<float>, 3> _weight;
+  float _scthresh;
+  int _shift;
   int proccesplanes[3];
   int _opt;
 
@@ -505,7 +579,6 @@ void AveragePlus::filter_mode2_C(PVideoFrame src[MAX_CLIPS], PVideoFrame& dst, c
   T* g_dstp{ reinterpret_cast<T*>(dst->GetWritePtr(plane)) };
 
 #ifdef _DEBUG
-  iMEL_non_current_samples = 0;
   iMEL_mem_hits = 0;
 #endif
 
@@ -609,63 +682,133 @@ void AveragePlus::filter_mode2_C(PVideoFrame src[MAX_CLIPS], PVideoFrame& dst, c
 }
 
 
-PVideoFrame AveragePlus::GetFrame(int n, IScriptEnvironment *env) {
-    int frames_count = (int)clips_.size();
-    PVideoFrame* src_frames = reinterpret_cast<PVideoFrame*>(alloca(frames_count * sizeof(PVideoFrame)));
-    const uint8_t **src_ptrs = reinterpret_cast<const uint8_t **>(alloca(sizeof(uint8_t*)* frames_count));
-    int *src_pitches = reinterpret_cast<int*>(alloca(sizeof(int)* frames_count));
-    float *weights = reinterpret_cast<float*>(alloca(sizeof(float)* frames_count));
-    if (src_pitches == nullptr || src_frames == nullptr || src_ptrs == nullptr || weights == nullptr) {
-        env->ThrowError("Average: Couldn't allocate memory on stack. This is a bug, please report");
-    }
-    memset(src_frames, 0, frames_count * sizeof(PVideoFrame));
+PVideoFrame AveragePlus::GetFrame(int n, IScriptEnvironment* env) {
+  int frames_count = (int)clips_.size();
+  PVideoFrame* src_frames = reinterpret_cast<PVideoFrame*>(alloca(frames_count * sizeof(PVideoFrame)));
+  const uint8_t** src_ptrs = reinterpret_cast<const uint8_t**>(alloca(sizeof(uint8_t*) * frames_count));
+  int* src_pitches = reinterpret_cast<int*>(alloca(sizeof(int) * frames_count));
+  float* weights = reinterpret_cast<float*>(alloca(sizeof(float) * frames_count));
+  if (src_pitches == nullptr || src_frames == nullptr || src_ptrs == nullptr || weights == nullptr) {
+    env->ThrowError("Average: Couldn't allocate memory on stack. This is a bug, please report");
+  }
 
-    for (int i = 0; i < frames_count; ++i) {
-        src_frames[i] = clips_[i].clip->GetFrame(n, env);
-        weights[i] = clips_[i].weight;
+  PVideoFrame src[MAX_CLIPS]{};
+  PVideoFrame dst;
+
+  if (_pmode == 1)
+  {
+    for (int i{ 0 }; i < frames_count; ++i)
+    {
+      src[i] = clips_[i].clip->GetFrame(n, env);
     }
 
     // frame props from the first clip
-    PVideoFrame dst = has_at_least_v8 ? env->NewVideoFrameP(vi, &src_frames[0]) : env->NewVideoFrame(vi);
+    dst = has_at_least_v8 ? env->NewVideoFrameP(vi, &src[0]) : env->NewVideoFrame(vi);
 
     int planes_y[4] = { PLANAR_Y, PLANAR_U, PLANAR_V, PLANAR_A };
     int planes_r[4] = { PLANAR_G, PLANAR_B, PLANAR_R, PLANAR_A };
-    int *planes = (vi.IsPlanarRGB() || vi.IsPlanarRGBA()) ? planes_r : planes_y;
-    
+    int* planes = (vi.IsPlanarRGB() || vi.IsPlanarRGBA()) ? planes_r : planes_y;
+
+    for (int i{ 0 }; i < std::min(vi.NumComponents(), 3); ++i)
+    {
+      if (proccesplanes[i] == 3)
+      {
+
+        switch (vi.ComponentSize())
+        {
+          case 1: {
+            filter_mode2_C<uint8_t>(src, dst, planes[i]);
+            break;
+          }
+          case 2: {
+            filter_mode2_C<uint16_t>(src, dst, planes[i]);
+            break;
+          }
+          default: {
+            filter_mode2_C<float>(src, dst, planes[i]);
+          }
+          continue;
+        }
+      }
+    }
+    return dst; // end of pmode=1
+  }
+
+  if (_pmode == 0)
+  {
+
+    memset(src_frames, 0, frames_count * sizeof(PVideoFrame));
+
+    for (int i = 0; i < frames_count; ++i) {
+      src_frames[i] = clips_[i].clip->GetFrame(n, env);
+      weights[i] = clips_[i].weight;
+    }
+
+    // frame props from the first clip
+    /*PVideoFrame*/ dst = has_at_least_v8 ? env->NewVideoFrameP(vi, &src_frames[0]) : env->NewVideoFrame(vi);
+
+    int planes_y[4] = { PLANAR_Y, PLANAR_U, PLANAR_V, PLANAR_A };
+    int planes_r[4] = { PLANAR_G, PLANAR_B, PLANAR_R, PLANAR_A };
+    int* planes = (vi.IsPlanarRGB() || vi.IsPlanarRGBA()) ? planes_r : planes_y;
+
     bool hasAlpha = vi.IsPlanarRGBA() || vi.IsYUVA();
 
     for (int pid = 0; pid < (vi.IsY() ? 1 : (hasAlpha ? 4 : 3)); pid++) {
-        int plane = planes[pid];
-        int width = dst->GetRowSize(plane);
-        int height = dst->GetHeight(plane);
-        auto dstp = dst->GetWritePtr(plane);
-        int dst_pitch = dst->GetPitch(plane);
+      int plane = planes[pid];
+      int width = dst->GetRowSize(plane);
+      int height = dst->GetHeight(plane);
+      auto dstp = dst->GetWritePtr(plane);
+      int dst_pitch = dst->GetPitch(plane);
 
-        bool allSrc32aligned = true;
-        for (int i = 0; i < frames_count; ++i) {
-            src_ptrs[i] = src_frames[i]->GetReadPtr(plane);
-            src_pitches[i] = src_frames[i]->GetPitch(plane);
-            if (!IsPtrAligned(src_ptrs[i], 32))
-              allSrc32aligned = false;
-            if(src_pitches[i] & 0x1F)
-              allSrc32aligned = false;
-        }
+      bool allSrc32aligned = true;
+      for (int i = 0; i < frames_count; ++i) {
+        src_ptrs[i] = src_frames[i]->GetReadPtr(plane);
+        src_pitches[i] = src_frames[i]->GetPitch(plane);
+        if (!IsPtrAligned(src_ptrs[i], 32))
+          allSrc32aligned = false;
+        if (src_pitches[i] & 0x1F)
+          allSrc32aligned = false;
+      }
 
-        if(IsPtrAligned(dstp,32) && (dst_pitch & 0x1F)==0 && allSrc32aligned)
-          processor_32aligned_(dstp, dst_pitch, src_ptrs, src_pitches, weights, frames_count, width, height);
-        else
-          processor_(dstp, dst_pitch, src_ptrs, src_pitches, weights, frames_count, width, height);
+      if (IsPtrAligned(dstp, 32) && (dst_pitch & 0x1F) == 0 && allSrc32aligned)
+        processor_32aligned_(dstp, dst_pitch, src_ptrs, src_pitches, weights, frames_count, width, height);
+      else
+        processor_(dstp, dst_pitch, src_ptrs, src_pitches, weights, frames_count, width, height);
     }
 
     for (int i = 0; i < frames_count; ++i) {
-        src_frames[i].~PVideoFrame();
+      src_frames[i].~PVideoFrame();
     }
+  }
 
     return dst;
 }
 
 
 AVSValue __cdecl create_average_plus(AVSValue args, void* user_data, IScriptEnvironment* env) {
+
+  enum
+  {
+    Clip, // as list of clips and weights ?
+    Ythresh,
+    Uthresh,
+    Vthresh,
+    Scthresh,
+    Y,
+    U,
+    V,
+    Opt,
+    Pmode,
+    YthUPD,
+    UthUPD,
+    VthUPD,
+    Ypnew,
+    Upnew,
+    Vpnew,
+    Threads,
+    idx_src // optional index of the 'source' clip, default to -1 - no special source selected (*thresh not applicable)
+  };
+
     AVSValue args0 = args[0];
     int arguments_count = args0.ArraySize();
     if (arguments_count == 1 && args0[0].IsArray()) {
@@ -704,13 +847,20 @@ AVSValue __cdecl create_average_plus(AVSValue args, void* user_data, IScriptEnvi
         clips.emplace_back(clip, weight);
     }
 
-    return new AveragePlus(clips, env);
+  //    return new AveragePlus(clips, env);
+  return new AveragePlus(clips,
+    args[Ythresh].AsInt(4), args[Uthresh].AsInt(5), args[Vthresh].AsInt(5),
+    args[Scthresh].AsFloatf(12), args[Y].AsInt(3), args[U].AsInt(3), args[V].AsInt(3), args[Opt].AsInt(-1),
+    args[Pmode].AsInt(0), args[YthUPD].AsInt(0), args[UthUPD].AsInt(0), args[VthUPD].AsInt(0), args[Ypnew].AsInt(0),
+    args[Upnew].AsInt(0), args[Vpnew].AsInt(0), args[Threads].AsInt(1), args[idx_src].AsInt(-1),    
+    env);
 }
 
 const AVS_Linkage *AVS_linkage = nullptr;
 
 extern "C" __declspec(dllexport) const char* __stdcall AvisynthPluginInit3(IScriptEnvironment* env, const AVS_Linkage* const vectors) {
     AVS_linkage = vectors;
-    env->AddFunction("AveragePlus", ".*", create_average_plus, 0);
+    env->AddFunction("AveragePlus", ".*[ythresh]i[uthresh]i[vthresh]i[scthresh]f[y]i[u]i[v]i[opt]i[pmode]"
+        "i[ythupd]i[uthupd]i[vthupd]i[ypnew]i[upnew]i[vpnew]i[threads]i[idx_src]i", create_average_plus, 0);
     return "Mind your sugar level";
 }
